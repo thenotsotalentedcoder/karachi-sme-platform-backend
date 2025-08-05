@@ -927,7 +927,7 @@ class RecommendationPromptTemplates:
        - Sector Expertise: {business_data.get('sector', 'N/A')}
        - Available Investment Capital: ${available_capital:,.0f}
        - Monthly Business Cash Flow: ${analysis_result.get('financial_health', {}).get('monthly_cash_flow', 0):,.0f}
-       - Risk Tolerance: {self._assess_risk_tolerance(analysis_result, business_data)}
+       - Risk Tolerance: {RecommendationPromptTemplates._assess_risk_tolerance(analysis_result, business_data)}
        
        BUSINESS INVESTMENT CAPACITY:
        - Cash Position: ${business_data.get('current_cash', 0):,.0f}
