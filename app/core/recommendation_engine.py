@@ -735,3 +735,31 @@ class RecommendationEngine:
        
         else:  # high risk tolerance
             return f"Your strong {sector} business performance allows for more aggressive investment. Focus on high-growth opportunities while maintaining business momentum."
+        
+    def _recommend_investment_strategy(self, available_capital: float, 
+                                 risk_profile: str, analysis_result: Dict[str, Any]) -> str:
+        """Recommend overall investment strategy based on profile and capital."""
+        
+        performance_score = analysis_result["overall_score"]["overall_score"]
+        financial_health = analysis_result["financial_health"]["status"]
+        
+        if available_capital < 50000:
+            return "Focus on business growth and building cash reserves before external investments"
+        
+        elif risk_profile == "low":
+            if financial_health in ["excellent", "good"]:
+                return "Conservative approach: 60% business reinvestment, 30% safe investments, 10% emergency fund"
+            else:
+                return "Priority on business stability: 80% business improvement, 20% emergency fund"
+        
+        elif risk_profile == "medium":
+            if performance_score >= 70:
+                return "Balanced growth: 50% business expansion, 30% sector investments, 20% diversified portfolio"
+            else:
+                return "Business-first approach: 70% business improvement, 20% safe investments, 10% sector exposure"
+        
+        else:  # high risk profile
+            if performance_score >= 80:
+                return "Aggressive growth: 40% business expansion, 40% growth investments, 20% sector opportunities"
+            else:
+                return "Strategic risk-taking: 60% business optimization, 30% growth investments, 10% opportunities"
