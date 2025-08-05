@@ -1,595 +1,683 @@
-"""Generate simple, actionable business insights using intelligent algorithms."""
+"""AI-powered insight generation engine for US small business intelligence."""
 
-from typing import Dict, List, Any, Optional, Tuple
-import random
+import logging
+from typing import Dict, List, Any, Optional
 from datetime import datetime
+import json
 
-from app.core.karachi_intelligence import KarachiIntelligence
-from app.data.karachi_sectors import get_sector_data
-from app.data.economic_factors import calculate_economic_impact
+from app.services.multi_gemini_service import MultiGeminiEngine
+from app.utils.prompt_templates import InsightPromptTemplates
+
+logger = logging.getLogger(__name__)
 
 
-class InsightGenerator:
-    """Generate simple, clear, actionable business insights."""
+class USInsightGenerator:
+    """Advanced AI insight generation for US small businesses."""
     
     def __init__(self):
-        self.karachi_intel = KarachiIntelligence()
-    
-    def generate_main_insight(self, analysis_result: Dict[str, Any], 
-                            business_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate the main insight - the big message for the business owner."""
+        self.ai_engine = MultiGeminiEngine()
+        self.prompt_templates = InsightPromptTemplates()
         
-        sector = business_data["sector"]
-        location = business_data["location_area"]
-        monthly_revenue = business_data["monthly_revenue"]
-        
-        # Get key metrics
-        performance_metrics = analysis_result["performance_metrics"]
-        market_position = analysis_result["market_position"]
-        financial_health = analysis_result["financial_health"]
-        
-        current_revenue = performance_metrics["current_revenue"]
-        market_average = market_position["market_average_revenue"]
-        performance_ratio = market_position["performance_ratio"]
-        revenue_trend = performance_metrics["revenue_trend"]
-        
-        # Determine the main insight type and message
-        insight = self._determine_primary_insight(
-            performance_ratio, revenue_trend, current_revenue, 
-            market_average, sector, location, financial_health
-        )
-        
-        return {
-            "insight_type": insight["type"],
-            "urgency": insight["urgency"],
-            "title": insight["title"],
-            "main_message": insight["message"],
-            "supporting_facts": insight["facts"],
-            "confidence_level": insight["confidence"],
-            "emotional_tone": insight["tone"],
+        # Insight categories and their weights
+        self.insight_categories = {
+            "financial_performance": 0.25,
+            "market_opportunity": 0.20,
+            "operational_efficiency": 0.20,
+            "economic_impact": 0.15,
+            "competitive_advantage": 0.10,
+            "risk_mitigation": 0.10
         }
     
-    def generate_problem_insights(self, analysis_result: Dict[str, Any],
-                                business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate specific problem identification insights."""
+    async def generate_main_insight(self, analysis_result: Dict[str, Any], 
+                                  business_data: Dict[str, Any],
+                                  economic_data: Dict[str, Any] = None,
+                                  market_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generate the primary business insight with highest impact."""
         
-        insights = []
+        logger.info("Generating main business insight")
         
-        # Revenue performance problems
-        revenue_insights = self._analyze_revenue_problems(analysis_result, business_data)
-        insights.extend(revenue_insights)
-        
-        # Market position problems
-        market_insights = self._analyze_market_problems(analysis_result, business_data)
-        insights.extend(market_insights)
-        
-        # Financial health problems
-        financial_insights = self._analyze_financial_problems(analysis_result, business_data)
-        insights.extend(financial_insights)
-        
-        # Competition problems
-        competition_insights = self._analyze_competition_problems(analysis_result, business_data)
-        insights.extend(competition_insights)
-        
-        # Return top 3 most important problems
-        return sorted(insights, key=lambda x: x["impact_score"], reverse=True)[:3]
+        try:
+            # Identify the most critical area needing attention
+            critical_area = self._identify_critical_area(analysis_result, business_data)
+            
+            # Generate targeted insight for the critical area
+            insight_prompt = self.prompt_templates.get_main_insight_prompt(
+                critical_area, analysis_result, business_data, economic_data, market_data
+            )
+            
+            insight_response = await self.ai_engine._make_gemini_request(
+                self.ai_engine.get_optimal_key("business_analysis"),
+                insight_prompt,
+                "main_insight"
+            )
+            
+            # Structure the main insight
+            main_insight = {
+                "insight_id": f"main_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "insight_type": "primary",
+                "category": critical_area,
+                "urgency": self._calculate_urgency(analysis_result, critical_area),
+                "title": insight_response.get("title", "Key Business Insight"),
+                "main_message": insight_response.get("main_message", ""),
+                "supporting_facts": insight_response.get("supporting_facts", []),
+                "recommended_actions": insight_response.get("recommended_actions", []),
+                "potential_impact": insight_response.get("potential_impact", {}),
+                "confidence_level": insight_response.get("confidence_level", 80),
+                "economic_context": self._add_economic_context(economic_data),
+                "generated_at": datetime.now().isoformat()
+            }
+            
+            logger.info(f"Generated main insight: {main_insight['title']}")
+            return main_insight
+            
+        except Exception as e:
+            logger.error(f"Failed to generate main insight: {str(e)}")
+            return self._create_fallback_insight("main", str(e))
     
-    def generate_opportunity_insights(self, analysis_result: Dict[str, Any],
-                                    business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate opportunity identification insights."""
+    async def generate_problem_insights(self, analysis_result: Dict[str, Any],
+                                      business_data: Dict[str, Any],
+                                      economic_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Generate insights about current business problems and challenges."""
         
-        insights = []
+        logger.info("Generating problem insights")
         
-        # Market opportunities
-        market_opportunities = self._identify_market_opportunities(analysis_result, business_data)
-        insights.extend(market_opportunities)
-        
-        # Product/service opportunities
-        product_opportunities = self._identify_product_opportunities(analysis_result, business_data)
-        insights.extend(product_opportunities)
-        
-        # Operational opportunities
-        operational_opportunities = self._identify_operational_opportunities(analysis_result, business_data)
-        insights.extend(operational_opportunities)
-        
-        # Financial opportunities
-        financial_opportunities = self._identify_financial_opportunities(analysis_result, business_data)
-        insights.extend(financial_opportunities)
-        
-        # Return top 3 opportunities
-        return sorted(insights, key=lambda x: x["potential_value"], reverse=True)[:3]
+        try:
+            # Identify key problems
+            problems = self._identify_key_problems(analysis_result, business_data)
+            
+            problem_insights = []
+            
+            for problem in problems[:3]:  # Top 3 problems
+                insight_prompt = self.prompt_templates.get_problem_insight_prompt(
+                    problem, analysis_result, business_data, economic_data
+                )
+                
+                insight_response = await self.ai_engine._make_gemini_request(
+                    self.ai_engine.get_optimal_key("business_analysis"),
+                    insight_prompt,
+                    "problem_insight"
+                )
+                
+                problem_insight = {
+                    "insight_id": f"problem_{problem['type']}_{datetime.now().strftime('%H%M%S')}",
+                    "insight_type": "problem",
+                    "category": problem["type"],
+                    "urgency": problem.get("urgency", "medium"),
+                    "title": insight_response.get("title", f"{problem['type'].title()} Challenge"),
+                    "problem_description": insight_response.get("problem_description", ""),
+                    "root_causes": insight_response.get("root_causes", []),
+                    "impact_analysis": insight_response.get("impact_analysis", {}),
+                    "solution_approaches": insight_response.get("solution_approaches", []),
+                    "prevention_strategies": insight_response.get("prevention_strategies", []),
+                    "confidence_level": insight_response.get("confidence_level", 75),
+                    "generated_at": datetime.now().isoformat()
+                }
+                
+                problem_insights.append(problem_insight)
+            
+            logger.info(f"Generated {len(problem_insights)} problem insights")
+            return problem_insights
+            
+        except Exception as e:
+            logger.error(f"Failed to generate problem insights: {str(e)}")
+            return [self._create_fallback_insight("problem", str(e))]
     
-    def _determine_primary_insight(self, performance_ratio: float, revenue_trend: str,
-                                 current_revenue: float, market_average: float,
-                                 sector: str, location: str, 
-                                 financial_health: Dict[str, Any]) -> Dict[str, Any]:
-        """Determine the primary insight for the business."""
+    async def generate_opportunity_insights(self, analysis_result: Dict[str, Any],
+                                          business_data: Dict[str, Any],
+                                          economic_data: Dict[str, Any] = None,
+                                          market_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Generate insights about business opportunities and growth potential."""
         
-        # Performance gap analysis
-        revenue_gap = market_average - current_revenue
-        gap_percentage = abs(performance_ratio - 1) * 100
+        logger.info("Generating opportunity insights")
         
-        # Critical financial issues take priority
-        if financial_health["status"] == "critical":
-            return {
-                "type": "critical_financial",
-                "urgency": "immediate",
-                "title": "🚨 URGENT: Cash Flow Crisis Detected",
-                "message": f"Your {sector} business is facing serious financial difficulties. Immediate action required to avoid closure.",
-                "facts": [
-                    f"Current financial health: {financial_health['status'].title()}",
-                    f"Monthly losses detected",
-                    f"Cash runway critically low"
-                ],
-                "confidence": 0.95,
-                "tone": "urgent"
-            }
+        try:
+            # Identify growth opportunities
+            opportunities = self._identify_growth_opportunities(
+                analysis_result, business_data, economic_data, market_data
+            )
+            
+            opportunity_insights = []
+            
+            for opportunity in opportunities[:3]:  # Top 3 opportunities
+                insight_prompt = self.prompt_templates.get_opportunity_insight_prompt(
+                    opportunity, analysis_result, business_data, economic_data, market_data
+                )
+                
+                insight_response = await self.ai_engine._make_gemini_request(
+                    self.ai_engine.get_optimal_key("market_intelligence"),
+                    insight_prompt,
+                    "opportunity_insight"
+                )
+                
+                opportunity_insight = {
+                    "insight_id": f"opportunity_{opportunity['type']}_{datetime.now().strftime('%H%M%S')}",
+                    "insight_type": "opportunity",
+                    "category": opportunity["type"],
+                    "priority": opportunity.get("priority", "medium"),
+                    "title": insight_response.get("title", f"{opportunity['type'].title()} Opportunity"),
+                    "opportunity_description": insight_response.get("opportunity_description", ""),
+                    "market_potential": insight_response.get("market_potential", {}),
+                    "implementation_strategy": insight_response.get("implementation_strategy", []),
+                    "resource_requirements": insight_response.get("resource_requirements", {}),
+                    "timeline_to_value": insight_response.get("timeline_to_value", ""),
+                    "success_probability": insight_response.get("success_probability", 0),
+                    "competitive_advantages": insight_response.get("competitive_advantages", []),
+                    "confidence_level": insight_response.get("confidence_level", 75),
+                    "generated_at": datetime.now().isoformat()
+                }
+                
+                opportunity_insights.append(opportunity_insight)
+            
+            logger.info(f"Generated {len(opportunity_insights)} opportunity insights")
+            return opportunity_insights
+            
+        except Exception as e:
+            logger.error(f"Failed to generate opportunity insights: {str(e)}")
+            return [self._create_fallback_insight("opportunity", str(e))]
+    
+    async def generate_market_insights(self, business_data: Dict[str, Any],
+                                     market_data: Dict[str, Any],
+                                     economic_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Generate insights about market conditions and competitive landscape."""
         
-        # Major underperformance
-        elif performance_ratio < 0.7 and revenue_trend == "declining":
-            return {
-                "type": "underperforming_declining",
-                "urgency": "high", 
-                "title": "🔴 YOUR BUSINESS IS FALLING BEHIND",
-                "message": f"Your {sector} shop in {location.title()} is earning Rs. {current_revenue:,.0f} while similar businesses average Rs. {market_average:,.0f}. The gap is growing.",
-                "facts": [
-                    f"You're {gap_percentage:.0f}% below market average",
-                    f"Revenue trend: {revenue_trend}",
-                    f"Monthly gap: Rs. {revenue_gap:,.0f}"
-                ],
-                "confidence": 0.9,
-                "tone": "concerned"
-            }
+        logger.info("Generating market insights")
         
-        # Underperforming but stable
-        elif performance_ratio < 0.8:
-            problem_cause = self._identify_underperformance_cause(sector, location, performance_ratio)
-            return {
-                "type": "underperforming_stable",
+        try:
+            market_insights = []
+            
+            # Market position insight
+            position_prompt = self.prompt_templates.get_market_position_insight_prompt(
+                business_data, market_data, economic_data
+            )
+            
+            position_response = await self.ai_engine._make_gemini_request(
+                self.ai_engine.get_optimal_key("market_intelligence"),
+                position_prompt,
+                "market_position"
+            )
+            
+            position_insight = {
+                "insight_id": f"market_position_{datetime.now().strftime('%H%M%S')}",
+                "insight_type": "market",
+                "category": "market_position",
                 "urgency": "medium",
-                "title": "📊 YOU'RE MISSING OUT ON PROFITS",
-                "message": f"Your {sector} business could earn Rs. {revenue_gap:,.0f} more monthly. {problem_cause}",
-                "facts": [
-                    f"Current revenue: Rs. {current_revenue:,.0f}",
-                    f"Market potential: Rs. {market_average:,.0f}",
-                    f"Missing opportunity: Rs. {revenue_gap:,.0f}/month"
-                ],
-                "confidence": 0.85,
-                "tone": "motivational"
+                "title": position_response.get("title", "Market Position Analysis"),
+                "position_analysis": position_response.get("position_analysis", {}),
+                "competitive_dynamics": position_response.get("competitive_dynamics", []),
+                "market_trends": position_response.get("market_trends", []),
+                "positioning_recommendations": position_response.get("positioning_recommendations", []),
+                "confidence_level": position_response.get("confidence_level", 80),
+                "generated_at": datetime.now().isoformat()
             }
+            
+            market_insights.append(position_insight)
+            
+            # Economic impact insight
+            if economic_data:
+                economic_prompt = self.prompt_templates.get_economic_impact_insight_prompt(
+                    business_data, economic_data
+                )
+                
+                economic_response = await self.ai_engine._make_gemini_request(
+                    self.ai_engine.get_optimal_key("business_analysis"),
+                    economic_prompt,
+                    "economic_impact"
+                )
+                
+                economic_insight = {
+                    "insight_id": f"economic_impact_{datetime.now().strftime('%H%M%S')}",
+                    "insight_type": "market",
+                    "category": "economic_impact",
+                    "urgency": "high",
+                    "title": economic_response.get("title", "Economic Environment Impact"),
+                    "impact_analysis": economic_response.get("impact_analysis", {}),
+                    "sector_implications": economic_response.get("sector_implications", []),
+                    "adaptation_strategies": economic_response.get("adaptation_strategies", []),
+                    "timing_considerations": economic_response.get("timing_considerations", {}),
+                    "confidence_level": economic_response.get("confidence_level", 85),
+                    "generated_at": datetime.now().isoformat()
+                }
+                
+                market_insights.append(economic_insight)
+            
+            logger.info(f"Generated {len(market_insights)} market insights")
+            return market_insights
+            
+        except Exception as e:
+            logger.error(f"Failed to generate market insights: {str(e)}")
+            return [self._create_fallback_insight("market", str(e))]
+    
+    async def generate_strategic_insights(self, analysis_result: Dict[str, Any],
+                                        business_data: Dict[str, Any],
+                                        economic_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Generate strategic insights for long-term business success."""
         
-        # Good performance with growth potential
-        elif performance_ratio > 1.2 and revenue_trend == "increasing":
-            return {
-                "type": "high_performer",
-                "urgency": "low",
-                "title": "🟢 EXCELLENT! YOU'RE A TOP PERFORMER",
-                "message": f"Your {sector} business is crushing it! You're earning {gap_percentage:.0f}% more than average. Time to think bigger.",
-                "facts": [
-                    f"Revenue: Rs. {current_revenue:,.0f} vs market Rs. {market_average:,.0f}",
-                    f"Performance: Top {100-self._calculate_percentile(performance_ratio):.0f}% in {location.title()}",
-                    f"Trend: {revenue_trend}"
-                ],
-                "confidence": 0.9,
-                "tone": "celebratory"
+        logger.info("Generating strategic insights")
+        
+        try:
+            strategic_insights = []
+            
+            # Growth strategy insight
+            growth_prompt = self.prompt_templates.get_growth_strategy_insight_prompt(
+                analysis_result, business_data, economic_data
+            )
+            
+            growth_response = await self.ai_engine._make_gemini_request(
+                self.ai_engine.get_optimal_key("recommendations"),
+                growth_prompt,
+                "growth_strategy"
+            )
+            
+            growth_insight = {
+                "insight_id": f"growth_strategy_{datetime.now().strftime('%H%M%S')}",
+                "insight_type": "strategic",
+                "category": "growth_strategy",
+                "priority": "high",
+                "title": growth_response.get("title", "Growth Strategy Direction"),
+                "strategy_analysis": growth_response.get("strategy_analysis", {}),
+                "growth_vectors": growth_response.get("growth_vectors", []),
+                "resource_allocation": growth_response.get("resource_allocation", {}),
+                "milestone_framework": growth_response.get("milestone_framework", []),
+                "risk_considerations": growth_response.get("risk_considerations", []),
+                "confidence_level": growth_response.get("confidence_level", 80),
+                "generated_at": datetime.now().isoformat()
             }
-        
-        # Average performance - improvement possible
-        elif 0.8 <= performance_ratio <= 1.2:
-            improvement_area = self._identify_improvement_opportunity(sector, location)
-            return {
-                "type": "average_performance",
-                "urgency": "medium",
-                "title": "📈 GOOD FOUNDATION, READY FOR GROWTH",
-                "message": f"Your {sector} business is performing normally. {improvement_area} could boost profits significantly.",
-                "facts": [
-                    f"Current position: Average performer in {location.title()}",
-                    f"Revenue stability: {revenue_trend}",
-                    f"Growth potential: High"
-                ],
-                "confidence": 0.8,
-                "tone": "encouraging"
+            
+            strategic_insights.append(growth_insight)
+            
+            # Competitive strategy insight
+            competitive_prompt = self.prompt_templates.get_competitive_strategy_insight_prompt(
+                analysis_result, business_data
+            )
+            
+            competitive_response = await self.ai_engine._make_gemini_request(
+                self.ai_engine.get_optimal_key("market_intelligence"),
+                competitive_prompt,
+                "competitive_strategy"
+            )
+            
+            competitive_insight = {
+                "insight_id": f"competitive_strategy_{datetime.now().strftime('%H%M%S')}",
+                "insight_type": "strategic",
+                "category": "competitive_strategy",
+                "priority": "medium",
+                "title": competitive_response.get("title", "Competitive Strategy Framework"),
+                "competitive_analysis": competitive_response.get("competitive_analysis", {}),
+                "differentiation_opportunities": competitive_response.get("differentiation_opportunities", []),
+                "competitive_moves": competitive_response.get("competitive_moves", []),
+                "defensive_strategies": competitive_response.get("defensive_strategies", []),
+                "confidence_level": competitive_response.get("confidence_level", 75),
+                "generated_at": datetime.now().isoformat()
             }
+            
+            strategic_insights.append(competitive_insight)
+            
+            logger.info(f"Generated {len(strategic_insights)} strategic insights")
+            return strategic_insights
+            
+        except Exception as e:
+            logger.error(f"Failed to generate strategic insights: {str(e)}")
+            return [self._create_fallback_insight("strategic", str(e))]
+    
+    def _identify_critical_area(self, analysis_result: Dict[str, Any], 
+                               business_data: Dict[str, Any]) -> str:
+        """Identify the most critical area requiring immediate attention."""
         
-        # Strong performance but declining
-        elif performance_ratio > 1.0 and revenue_trend == "declining":
-            return {
-                "type": "declining_leader",
-                "urgency": "high",
-                "title": "⚠️ WARNING: STRONG BUSINESS WEAKENING",
-                "message": f"You're still above average but losing ground fast. Revenue dropped while market stayed strong.",
-                "facts": [
-                    f"Still {gap_percentage:.0f}% above market average",
-                    f"But revenue is {revenue_trend}",
-                    f"Market is stable - problem is internal"
-                ],
-                "confidence": 0.88,
-                "tone": "warning"
-            }
+        # Calculate scores for different areas
+        area_scores = {}
         
-        # Default case
+        # Financial health score
+        financial_health = analysis_result.get("financial_health", {})
+        health_score = financial_health.get("health_score", 50)
+        area_scores["financial_performance"] = 100 - health_score  # Lower health = higher urgency
+        
+        # Cash flow urgency
+        cash_runway = financial_health.get("cash_runway_months", 6)
+        if cash_runway < 3:
+            area_scores["financial_performance"] += 30
+        
+        # Market position concerns
+        market_position = analysis_result.get("market_position", {})
+        performance_ratio = market_position.get("performance_ratio", 1.0)
+        if performance_ratio < 0.7:
+            area_scores["market_opportunity"] = 80
+        
+        # Growth stagnation
+        performance_metrics = analysis_result.get("performance_metrics", {})
+        growth_rate = performance_metrics.get("revenue_growth_rate", 0)
+        if growth_rate < 0:
+            area_scores["operational_efficiency"] = 85
+        
+        # Risk assessment
+        risk_assessment = analysis_result.get("risk_assessment", {})
+        overall_risk = risk_assessment.get("overall_risk_score", 50)
+        if overall_risk > 70:
+            area_scores["risk_mitigation"] = overall_risk
+        
+        # Economic impact
+        economic_impact = analysis_result.get("economic_impact", {})
+        if economic_impact.get("economic_environment") in ["strong_headwinds", "moderate_headwinds"]:
+            area_scores["economic_impact"] = 70
+        
+        # Return the area with highest score (most urgent)
+        if area_scores:
+            return max(area_scores, key=area_scores.get)
+        
+        return "financial_performance"  # Default
+    
+    def _calculate_urgency(self, analysis_result: Dict[str, Any], critical_area: str) -> str:
+        """Calculate urgency level for the critical area."""
+        
+        urgency_factors = {
+            "financial_performance": self._assess_financial_urgency(analysis_result),
+            "market_opportunity": self._assess_market_urgency(analysis_result),
+            "operational_efficiency": self._assess_operational_urgency(analysis_result),
+            "economic_impact": self._assess_economic_urgency(analysis_result),
+            "risk_mitigation": self._assess_risk_urgency(analysis_result),
+            "competitive_advantage": self._assess_competitive_urgency(analysis_result)
+        }
+        
+        urgency_score = urgency_factors.get(critical_area, 50)
+        
+        if urgency_score >= 80:
+            return "critical"
+        elif urgency_score >= 60:
+            return "high"
+        elif urgency_score >= 40:
+            return "medium"
         else:
-            return {
-                "type": "mixed_signals",
-                "urgency": "medium",
-                "title": "📊 MIXED SIGNALS IN YOUR BUSINESS",
-                "message": f"Your {sector} business shows both strengths and challenges. Let's focus on the biggest opportunities.",
-                "facts": [
-                    f"Revenue: Rs. {current_revenue:,.0f}",
-                    f"Market position: {'Above' if performance_ratio > 1 else 'Below'} average",
-                    f"Trend: {revenue_trend}"
-                ],
-                "confidence": 0.75,
-                "tone": "analytical"
-            }
+            return "low"
     
-    def _analyze_revenue_problems(self, analysis_result: Dict[str, Any],
-                                business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Analyze revenue-specific problems."""
+    def _assess_financial_urgency(self, analysis_result: Dict[str, Any]) -> int:
+        """Assess financial urgency score."""
+        urgency = 0
+        
+        financial_health = analysis_result.get("financial_health", {})
+        
+        # Cash runway assessment
+        cash_runway = financial_health.get("cash_runway_months", 6)
+        if cash_runway < 1:
+            urgency += 40
+        elif cash_runway < 3:
+            urgency += 25
+        elif cash_runway < 6:
+            urgency += 10
+        
+        # Cash flow assessment
+        monthly_cash_flow = financial_health.get("monthly_cash_flow", 0)
+        if monthly_cash_flow < 0:
+            urgency += 30
+        
+        # Stress indicators
+        stress_indicators = financial_health.get("stress_indicators", [])
+        urgency += len(stress_indicators) * 5
+        
+        return min(100, urgency)
+    
+    def _assess_market_urgency(self, analysis_result: Dict[str, Any]) -> int:
+        """Assess market urgency score."""
+        urgency = 0
+        
+        market_position = analysis_result.get("market_position", {})
+        
+        # Performance ratio
+        performance_ratio = market_position.get("performance_ratio", 1.0)
+        if performance_ratio < 0.5:
+            urgency += 40
+        elif performance_ratio < 0.7:
+            urgency += 25
+        elif performance_ratio < 0.9:
+            urgency += 10
+        
+        # Market context
+        market_context = market_position.get("market_context", {})
+        competitive_intensity = market_context.get("competitive_intensity", 0.5)
+        urgency += competitive_intensity * 30
+        
+        return min(100, urgency)
+    
+    def _assess_operational_urgency(self, analysis_result: Dict[str, Any]) -> int:
+        """Assess operational urgency score."""
+        urgency = 0
+        
+        performance_metrics = analysis_result.get("performance_metrics", {})
+        
+        # Revenue trend
+        revenue_growth = performance_metrics.get("revenue_growth_rate", 0)
+        if revenue_growth < -0.1:  # 10% decline
+            urgency += 35
+        elif revenue_growth < 0:
+            urgency += 20
+        
+        # Efficiency score
+        efficiency_score = performance_metrics.get("financial_efficiency_score", 50)
+        if efficiency_score < 30:
+            urgency += 25
+        elif efficiency_score < 50:
+            urgency += 15
+        
+        return min(100, urgency)
+    
+    def _assess_economic_urgency(self, analysis_result: Dict[str, Any]) -> int:
+        """Assess economic environment urgency score."""
+        urgency = 0
+        
+        economic_impact = analysis_result.get("economic_impact", {})
+        
+        # Economic environment
+        environment = economic_impact.get("economic_environment", "neutral")
+        if environment == "strong_headwinds":
+            urgency += 40
+        elif environment == "moderate_headwinds":
+            urgency += 25
+        
+        # Economic impact score
+        impact_score = economic_impact.get("overall_impact_score", 0)
+        if impact_score < -20:
+            urgency += 30
+        elif impact_score < 0:
+            urgency += 15
+        
+        return min(100, urgency)
+    
+    def _assess_risk_urgency(self, analysis_result: Dict[str, Any]) -> int:
+        """Assess risk urgency score."""
+        urgency = 0
+        
+        risk_assessment = analysis_result.get("risk_assessment", {})
+        
+        # Overall risk score
+        overall_risk = risk_assessment.get("overall_risk_score", 50)
+        if overall_risk > 80:
+            urgency += 40
+        elif overall_risk > 60:
+            urgency += 25
+        
+        # Key vulnerabilities
+        vulnerabilities = risk_assessment.get("key_vulnerabilities", [])
+        urgency += len(vulnerabilities) * 10
+        
+        return min(100, urgency)
+    
+    def _assess_competitive_urgency(self, analysis_result: Dict[str, Any]) -> int:
+        """Assess competitive urgency score."""
+        urgency = 0
+        
+        competitive_analysis = analysis_result.get("competitive_analysis", {})
+        
+        # Competitive weaknesses
+        weaknesses = competitive_analysis.get("competitive_weaknesses", [])
+        urgency += len(weaknesses) * 10
+        
+        # Market share
+        market_share = competitive_analysis.get("estimated_market_share", 5)
+        if market_share < 1:
+            urgency += 30
+        elif market_share < 3:
+            urgency += 15
+        
+        return min(100, urgency)
+    
+    def _identify_key_problems(self, analysis_result: Dict[str, Any],
+                              business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify key business problems requiring attention."""
         
         problems = []
-        performance_metrics = analysis_result["performance_metrics"]
         
-        # Declining revenue
-        if performance_metrics["revenue_trend"] == "declining":
-            revenue_data = business_data["monthly_revenue"]
-            decline_amount = revenue_data[0] - revenue_data[-1] if len(revenue_data) >= 2 else 0
-            
+        # Financial problems
+        financial_health = analysis_result.get("financial_health", {})
+        if financial_health.get("cash_runway_months", 6) < 3:
             problems.append({
-                "type": "revenue_decline",
-                "title": "Revenue Dropping Fast",
-                "description": f"Monthly revenue declined by Rs. {decline_amount:,.0f} over 6 months",
-                "impact_amount": decline_amount * 12,  # Annual impact
-                "impact_score": 90,
+                "type": "cash_flow",
+                "urgency": "critical",
+                "severity": "high",
+                "data": financial_health
+            })
+        
+        if financial_health.get("monthly_cash_flow", 0) < 0:
+            problems.append({
+                "type": "profitability",
                 "urgency": "high",
-                "root_cause": self._identify_revenue_decline_cause(business_data),
+                "severity": "high",
+                "data": financial_health
             })
         
-        # Low revenue growth
-        elif performance_metrics["revenue_growth_rate"] < 0.02:  # Less than 2% monthly growth
-            problems.append({
-                "type": "stagnant_revenue",
-                "title": "Revenue Growth Stalled",
-                "description": "Business growth has plateaued - missing market opportunities",
-                "impact_amount": performance_metrics["current_revenue"] * 0.15,  # 15% potential increase
-                "impact_score": 70,
-                "urgency": "medium",
-                "root_cause": "Need new growth strategies and market expansion",
-            })
-        
-        # Revenue volatility
-        if performance_metrics["revenue_stability"] < 0.6:
-            problems.append({
-                "type": "revenue_volatility",
-                "title": "Unpredictable Revenue Swings",
-                "description": "Revenue fluctuates too much - hard to plan and manage cash flow",
-                "impact_amount": performance_metrics["current_revenue"] * 0.1,
-                "impact_score": 60,
-                "urgency": "medium",
-                "root_cause": "Need more stable customer base and revenue streams",
-            })
-        
-        return problems
-    
-    def _analyze_market_problems(self, analysis_result: Dict[str, Any],
-                               business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Analyze market position problems."""
-        
-        problems = []
-        market_position = analysis_result["market_position"]
-        sector = business_data["sector"]
-        location = business_data["location_area"]
-        
-        # Significantly below market average
-        if market_position["performance_ratio"] < 0.7:
-            gap = market_position["market_average_revenue"] - market_position["business_revenue"]
-            
+        # Market problems
+        market_position = analysis_result.get("market_position", {})
+        if market_position.get("performance_ratio", 1.0) < 0.7:
             problems.append({
                 "type": "market_underperformance",
-                "title": "Falling Behind Competitors",
-                "description": f"Other {sector} businesses in {location.title()} are earning Rs. {gap:,.0f} more per month",
-                "impact_amount": gap,
-                "impact_score": 85,
-                "urgency": "high",
-                "root_cause": self._identify_competitive_disadvantage(sector, location, market_position),
-            })
-        
-        # High competition area
-        competition_level = market_position["market_context"]["competition_level"]
-        if competition_level in ["high", "very_high"]:
-            problems.append({
-                "type": "intense_competition",
-                "title": f"{competition_level.replace('_', ' ').title()} Competition Pressure",
-                "description": f"Too many competitors in {location.title()} - price pressure and customer loss",
-                "impact_amount": market_position["business_revenue"] * 0.12,
-                "impact_score": 75,
                 "urgency": "medium",
-                "root_cause": "Need differentiation strategy to stand out from competitors",
+                "severity": "medium",
+                "data": market_position
             })
         
-        return problems
-    
-    def _analyze_financial_problems(self, analysis_result: Dict[str, Any],
-                                  business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Analyze financial health problems."""
-        
-        problems = []
-        financial_health = analysis_result["financial_health"]
-        performance_metrics = analysis_result["performance_metrics"]
-        
-        # Low profit margins
-        if performance_metrics["profit_margin"] < 0.15:  # Less than 15%
+        # Operational problems
+        performance_metrics = analysis_result.get("performance_metrics", {})
+        if performance_metrics.get("revenue_growth_rate", 0) < -0.05:
             problems.append({
-                "type": "low_profit_margin",
-                "title": "Profit Margins Too Low",
-                "description": f"Only {performance_metrics['profit_margin']*100:.1f}% profit margin - should be 20%+",
-                "impact_amount": performance_metrics["current_revenue"] * 0.05,  # 5% improvement potential
-                "impact_score": 80,
+                "type": "revenue_decline",
                 "urgency": "high",
-                "root_cause": "Either prices too low or costs too high - need pricing/cost review",
+                "severity": "high",
+                "data": performance_metrics
             })
         
-        # Cash flow problems
-        if performance_metrics["cash_runway_months"] < 3:
+        # Risk problems
+        risk_assessment = analysis_result.get("risk_assessment", {})
+        if risk_assessment.get("overall_risk_score", 50) > 70:
             problems.append({
-                "type": "cash_flow_crisis",
-                "title": "Dangerous Cash Flow Situation",
-                "description": f"Only {performance_metrics['cash_runway_months']:.1f} months of cash left",
-                "impact_amount": business_data["monthly_expenses"] * 6,  # Need 6 months runway
-                "impact_score": 95,
-                "urgency": "immediate",
-                "root_cause": "Need immediate cash flow improvement and expense control",
-            })
-        
-        return problems
-    
-    def _analyze_competition_problems(self, analysis_result: Dict[str, Any],
-                                    business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Analyze competition-related problems."""
-        
-        problems = []
-        sector = business_data["sector"]
-        location = business_data["location_area"]
-        
-        # Get sector data for insights
-        sector_data = get_sector_data(sector)
-        if not sector_data:
-            return problems
-        
-        # Low margin products focus
-        current_revenue = analysis_result["performance_metrics"]["current_revenue"]
-        market_average = analysis_result["market_position"]["market_average_revenue"]
-        
-        if current_revenue < market_average * 0.8:
-            low_margin_products = sector_data["business_insights"]["low_margin_products"]
-            
-            problems.append({
-                "type": "wrong_product_focus",
-                "title": "Focusing on Wrong Products",
-                "description": f"Too much focus on {low_margin_products[0]} - low profit items",
-                "impact_amount": current_revenue * 0.18,  # 18% potential improvement
-                "impact_score": 82,
+                "type": "high_risk_exposure",
                 "urgency": "medium",
-                "root_cause": f"Switch from {low_margin_products[0]} to higher-margin alternatives",
+                "severity": "medium",
+                "data": risk_assessment
             })
+        
+        # Sort by urgency and severity
+        urgency_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        problems.sort(key=lambda x: urgency_order.get(x["urgency"], 1), reverse=True)
         
         return problems
     
-    def _identify_market_opportunities(self, analysis_result: Dict[str, Any],
-                                     business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify market-based opportunities."""
+    def _identify_growth_opportunities(self, analysis_result: Dict[str, Any],
+                                     business_data: Dict[str, Any],
+                                     economic_data: Dict[str, Any] = None,
+                                     market_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Identify growth opportunities for the business."""
         
         opportunities = []
-        sector = business_data["sector"]
-        location = business_data["location_area"]
-        sector_data = get_sector_data(sector)
         
-        if not sector_data:
-            return opportunities
-        
-        # High-margin product opportunities
-        high_margin_products = sector_data["business_insights"]["high_margin_products"]
-        current_revenue = analysis_result["performance_metrics"]["current_revenue"]
-        
-        opportunities.append({
-            "type": "product_mix_optimization",
-            "title": f"Switch to {high_margin_products[0].replace('_', ' ').title()}",
-            "description": f"Focus on {high_margin_products[0]} - 40% profit vs current 12%",
-            "potential_value": current_revenue * 0.25,  # 25% revenue increase potential
-            "timeframe": "1-2 months",
-            "implementation_ease": "easy",
-            "specific_action": f"Reduce current inventory, stock more {high_margin_products[0]}",
-        })
-        
-        # Growth opportunities from sector data
-        growth_opportunities = sector_data["business_insights"]["growth_opportunities"]
-        if growth_opportunities:
+        # Market expansion opportunities
+        market_position = analysis_result.get("market_position", {})
+        if market_position.get("performance_ratio", 1.0) > 1.2:
             opportunities.append({
-                "type": "new_service_opportunity",
-                "title": f"Add {growth_opportunities[0].replace('_', ' ').title()} Service",
-                "description": f"{growth_opportunities[0]} market is growing 40% annually in Karachi",
-                "potential_value": current_revenue * 0.3,
-                "timeframe": "2-3 months",
-                "implementation_ease": "medium",
-                "specific_action": f"Learn {growth_opportunities[0]} skills and promote new service",
+                "type": "market_expansion",
+                "priority": "high",
+                "potential": "high",
+                "data": market_position
             })
+        
+        # Operational efficiency opportunities
+        performance_metrics = analysis_result.get("performance_metrics", {})
+        efficiency_score = performance_metrics.get("financial_efficiency_score", 50)
+        if efficiency_score < 70:
+            opportunities.append({
+                "type": "operational_efficiency",
+                "priority": "medium",
+                "potential": "medium",
+                "data": performance_metrics
+            })
+        
+        # Technology adoption opportunities
+        sector = business_data.get("sector", "")
+        if sector in ["retail", "food", "electronics"]:
+            opportunities.append({
+                "type": "digital_transformation",
+                "priority": "medium",
+                "potential": "high",
+                "data": {"sector": sector}
+            })
+        
+        # Economic tailwind opportunities
+        if economic_data:
+            economic_impact = analysis_result.get("economic_impact", {})
+            if economic_impact.get("overall_impact_score", 0) > 10:
+                opportunities.append({
+                    "type": "economic_timing",
+                    "priority": "high",
+                    "potential": "medium",
+                    "data": economic_impact
+                })
+        
+        # Investment opportunities
+        financial_health = analysis_result.get("financial_health", {})
+        if financial_health.get("cash_runway_months", 6) > 6:
+            opportunities.append({
+                "type": "strategic_investment",
+                "priority": "medium",
+                "potential": "high",
+                "data": financial_health
+            })
+        
+        # Sort by priority and potential
+        priority_order = {"high": 3, "medium": 2, "low": 1}
+        opportunities.sort(
+            key=lambda x: (priority_order.get(x["priority"], 1), 
+                          priority_order.get(x["potential"], 1)), 
+            reverse=True
+        )
         
         return opportunities
     
-    def _identify_product_opportunities(self, analysis_result: Dict[str, Any],
-                                      business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify product/service opportunities."""
+    def _add_economic_context(self, economic_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add relevant economic context to insights."""
         
-        opportunities = []
-        sector = business_data["sector"]
-        current_revenue = analysis_result["performance_metrics"]["current_revenue"]
+        if not economic_data:
+            return {}
         
-        # Sector-specific opportunities
-        if sector == "electronics":
-            opportunities.append({
-                "type": "repair_service_addition",
-                "title": "Add Mobile Repair Service",
-                "description": "Rs. 500 profit per repair - 10 repairs daily = Rs. 150K monthly",
-                "potential_value": 150000,
-                "timeframe": "2-4 weeks",
-                "implementation_ease": "easy",
-                "specific_action": "Buy repair kit (Rs. 25K), learn basic repairs, put up sign",
-            })
-        
-        elif sector == "food":
-            opportunities.append({
-                "type": "delivery_service",
-                "title": "Start Home Delivery",
-                "description": "50% of food orders now delivery - missing huge market",
-                "potential_value": current_revenue * 0.5,
-                "timeframe": "1-2 weeks", 
-                "implementation_ease": "easy",
-                "specific_action": "Partner with Foodpanda or start WhatsApp delivery service",
-            })
-        
-        elif sector == "textile":
-            opportunities.append({
-                "type": "wedding_specialization",
-                "title": "Focus on Wedding Market",
-                "description": "Wedding fabrics sell for 3x regular price - it's wedding season",
-                "potential_value": current_revenue * 0.8,
-                "timeframe": "immediate",
-                "implementation_ease": "easy",
-                "specific_action": "Stock red/gold fabrics, target bridal customers",
-            })
-        
-        return opportunities
-    
-    def _identify_operational_opportunities(self, analysis_result: Dict[str, Any],
-                                          business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify operational improvement opportunities."""
-        
-        opportunities = []
-        current_revenue = analysis_result["performance_metrics"]["current_revenue"]
-        profit_margin = analysis_result["performance_metrics"]["profit_margin"]
-        
-        # Low profit margin improvement
-        if profit_margin < 0.18:
-            opportunities.append({
-                "type": "margin_improvement",
-                "title": "Improve Profit Margins",
-                "description": f"Current {profit_margin*100:.1f}% margin - target 22% through pricing/costs",
-                "potential_value": current_revenue * 0.05,  # 5% revenue increase from better margins
-                "timeframe": "1 month",
-                "implementation_ease": "medium",
-                "specific_action": "Review all prices and supplier costs - optimize mix",
-            })
-        
-        # Digital presence opportunity
-        opportunities.append({
-            "type": "digital_presence",
-            "title": "Build Online Presence", 
-            "description": "70% of customers check online first - you're invisible",
-            "potential_value": current_revenue * 0.3,
-            "timeframe": "2-3 weeks",
-            "implementation_ease": "easy",
-            "specific_action": "Create Instagram business page, post daily photos",
-        })
-        
-        return opportunities
-    
-    def _identify_financial_opportunities(self, analysis_result: Dict[str, Any],
-                                        business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify financial optimization opportunities."""
-        
-        opportunities = []
-        current_cash = business_data["current_cash"]
-        monthly_expenses = business_data["monthly_expenses"]
-        
-        # Investment opportunity
-        if current_cash > monthly_expenses * 3:  # Have excess cash
-            investment_amount = min(current_cash * 0.3, 200000)  # Max 30% or 200K
-            
-            opportunities.append({
-                "type": "investment_opportunity",
-                "title": "Invest Idle Cash",
-                "description": f"Rs. {current_cash:,.0f} sitting idle - inflation eating 29% yearly",
-                "potential_value": investment_amount * 0.18,  # 18% annual return
-                "timeframe": "immediate",
-                "implementation_ease": "easy",
-                "specific_action": f"Invest Rs. {investment_amount:,.0f} in sector stocks or business expansion",
-            })
-        
-        return opportunities
-    
-    # Helper methods
-    
-    def _identify_underperformance_cause(self, sector: str, location: str, performance_ratio: float) -> str:
-        """Identify likely cause of underperformance."""
-        
-        if performance_ratio < 0.6:
-            return "Major operational issues or wrong business model"
-        elif performance_ratio < 0.8:
-            if sector == "electronics":
-                return "Likely selling phones instead of accessories"
-            elif sector == "food":
-                return "Missing delivery market or location issues"
-            elif sector == "textile":
-                return "Not targeting wedding customers"
-            elif sector == "auto":
-                return "Wrong parts mix or location problem"
-            else:
-                return "Product mix or pricing strategy needs review"
-        else:
-            return "Minor optimization needed"
-    
-    def _calculate_percentile(self, performance_ratio: float) -> int:
-        """Calculate approximate percentile rank."""
-        if performance_ratio >= 1.8:
-            return 95
-        elif performance_ratio >= 1.5:
-            return 85
-        elif performance_ratio >= 1.2:
-            return 70
-        elif performance_ratio >= 1.0:
-            return 50
-        elif performance_ratio >= 0.8:
-            return 30
-        elif performance_ratio >= 0.6:
-            return 15
-        else:
-            return 5
-    
-    def _identify_improvement_opportunity(self, sector: str, location: str) -> str:
-        """Identify the best improvement opportunity."""
-        
-        sector_opportunities = {
-            "electronics": "Adding mobile repair services",
-            "food": "Starting home delivery", 
-            "textile": "Targeting wedding customers",
-            "auto": "Focusing on motorcycle parts",
-            "retail": "Building online presence"
+        return {
+            "fed_funds_rate": economic_data.get("fed_funds_rate"),
+            "inflation_rate": economic_data.get("inflation_cpi"),
+            "unemployment_rate": economic_data.get("unemployment_rate"),
+            "economic_health_score": economic_data.get("economic_health_score"),
+            "small_business_impact": economic_data.get("small_business_impact", {}).get("overall_impact"),
+            "context_summary": f"Current Fed rate at {economic_data.get('fed_funds_rate', 'N/A')}%, "
+                             f"inflation at {economic_data.get('inflation_cpi', 'N/A')}, "
+                             f"unemployment at {economic_data.get('unemployment_rate', 'N/A')}%"
         }
-        
-        return sector_opportunities.get(sector, "Optimizing product mix")
     
-    def _identify_revenue_decline_cause(self, business_data: Dict[str, Any]) -> str:
-        """Identify likely cause of revenue decline."""
+    def _create_fallback_insight(self, insight_type: str, error_message: str) -> Dict[str, Any]:
+        """Create a fallback insight when AI generation fails."""
         
-        sector = business_data["sector"]
-        
-        # Calculate economic impact
-        economic_impact = calculate_economic_impact(sector, business_data)
-        
-        if economic_impact["total_economic_impact"] < -0.1:
-            return "Economic conditions (inflation, PKR weakness) hurting sector"
-        else:
-            return "Internal business issues - competition or operational problems"
-    
-    def _identify_competitive_disadvantage(self, sector: str, location: str, 
-                                         market_position: Dict[str, Any]) -> str:
-        """Identify why business is behind competitors."""
-        
-        performance_ratio = market_position["performance_ratio"]
-        
-        if performance_ratio < 0.5:
-            return "Fundamental business model or location issues"
-        elif performance_ratio < 0.7:
-            return "Wrong product focus or pricing strategy"
-        else:
-            return "Operational efficiency or customer service issues"
+        return {
+            "insight_id": f"fallback_{insight_type}_{datetime.now().strftime('%H%M%S')}",
+            "insight_type": insight_type,
+            "category": "system_generated",
+            "urgency": "low",
+            "title": f"Analysis {insight_type.title()} Summary",
+            "main_message": "Automated analysis completed. Manual review recommended for detailed insights.",
+            "supporting_facts": ["Analysis engine completed primary calculations"],
+            "recommended_actions": ["Review detailed analysis results", "Consider consulting with business advisor"],
+            "confidence_level": 50,
+            "error_context": error_message,
+            "generated_at": datetime.now().isoformat()
+        }
